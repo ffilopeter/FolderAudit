@@ -6,6 +6,8 @@ try {
     $adAvailable = $true
 } catch { $adAvailable = $false }
 
+$global:PermissionModel = @()
+
 # =======================
 # GUI
 # =======================
@@ -69,6 +71,17 @@ $browseButton.Add_Click({
         Load-TreeView -parentNode $rootNode -path $folderBrowser.SelectedPath
         
         $rootNode.Expand()
+
+        Load-Permissions -path $folderBrowser.SelectedPath
+        Rebuild-ListView $listView
+    }
+})
+
+$treeView.Add_AfterSelect({
+    $selectedPath = $treeView.SelectedNode.Tag
+    if (Test-Path $selectedPath) {
+        Load-Permissions -path $selectedPath
+        Rebuild-ListView $listView
     }
 })
 
@@ -113,6 +126,11 @@ function Load-TreeView {
 function Is-Group {
     param([string]$identity)
 
+    $result = [PSCustomObject]@{
+        Type    = "Undefined"
+        Group   = $false
+    }
+
     if ($identity -Match '\\') {
         $domain, $name = $identity.Split('\', 2)
 
@@ -121,7 +139,10 @@ function Is-Group {
             # Identity is local
             try {
                 $group = [ADSI]"WinNT://./$name,group"
-                if ($group.Path) { return $true }
+                if ($group.Path) {
+                    $result.Type = "Local"
+                    $result.Group = $true
+                }
             } catch {}
         } else {
 
@@ -130,14 +151,175 @@ function Is-Group {
                 try {
                     $adObject = Get-ADObject -Filter { SamAccountName -eq $name } -ErrorAction Stop
                     if ($adObject.ObjectClass -eq 'group') {
-                        return $true;
+                        $result.Type = "Domain"
+                        $result.Group = $true
                     }
                 } catch {}
             }
         }
     }
 
-    return $false
+    return $result
+}
+
+function Get-GroupMembers {
+    param([string]$identity)
+
+    $members = @()
+    $type = (Is-Group $identity).Type
+    $domain, $name = $identity.Split('\', 2)
+
+    if ($type -eq 'Domain') {
+
+        # Get domain group members
+        if ($adAvailable) {
+            try {
+                Get-ADGroupMember -Identity $name -ErrorAction Stop | ForEach-Object {
+                    $sam = $_.SamAccountName
+                    $members += "$domain\$sam"
+                }
+            } catch {}
+        }
+
+    } elseif ($type -eq 'Local') {
+
+        # Get local group members
+        try {
+            $output = net localgroup "$name" 2>&1
+            $start = ($output | Select-String -SimpleMatch '---').LineNumber + 1
+            $end = ($output | Select-String -SimpleMatch 'The command completed successfully.').LineNumber
+            $result = $output[$start..($end - 2)] | Where-Object { $_.Trim() -ne '' }
+
+            foreach ($member in $result) {
+                if ($member -Match '\\') {
+                    $members += $member
+                } else {
+                    $members += $env:COMPUTERNAME +"\$member"
+                }
+            }
+        } catch {}
+    } else {}
+
+    return $members
+}
+
+function Resolve-Group {
+    param([string]$identity, [int]$indent)
+    $indentation = $indent + 1
+    $members = Get-GroupMembers $identity
+
+    $result = @()
+    $members | ForEach-Object {
+        $id = $_
+        $isGroup = (Is-Group $_).Group
+        $name = $id.Split('\')[-1]
+
+        $result += [PSCustomObject]@{
+            Id              = $result.Count
+            Identity        = $id
+            DisplayName     = $(if ($isGroup) { "+ $name" } else { $id })
+            Type            = $(if ($isGroup) { "Group" } else { "User" })
+            Indent          = $indentation
+            Expanded        = $false
+
+            Members         = $(if ($isGroup) { Resolve-Group $id $indentation } else { @() })
+
+            Rights          = ""
+            AccessType      = ""
+        }
+    }
+
+    return $result
+}
+
+function Load-Permissions {
+    param([string]$path)
+
+    $global:PermissionModel = @()
+
+    try {
+        $acl = Get-Acl -Path $path
+        foreach ($access in $acl.Access) {
+            
+            # name with domain portion prepended
+            $identity = $access.IdentityReference.ToString()
+            
+            $isGroup = (Is-Group $identity).Group
+
+            # identity name (without domain portion)
+            $name = $identity.Split('\')[-1]
+
+            # add to PermissionModel array
+            $global:PermissionModel += [PSCustomObject]@{
+                Id              = $global:PermissionModel.Count
+                Identity        = $identity
+                DisplayName     = $(if ($isGroup) { "+ $name" } else { $identity })
+                Type            = $(if ($isGroup) { "Group" } else { "User" })
+                Indent          = 0
+                Expanded        = $false
+
+                # If identity is group, resolve it's members
+                Members         = $(if ($isGroup) { Resolve-Group $identity 0 } else { @() })
+
+                Rights          = $access.FileSystemRights.ToString()
+                AccessType      = $access.AccessControlType.ToString()
+            }
+        }
+    } catch {
+        $global:PermissionModel += [PSCustomObject]@{
+            Id              = 0
+            Identity        = "Access Denied"
+            DisplayName     = "Access Denied"
+            Type            = "Error"
+            Indent          = 0
+            Expanded        = $false
+            Members         = @()
+            Rights          = ""
+            AccessType      = ""
+        }
+    }
+}
+
+function Rebuild-ListView {
+    param($listView)
+
+    $listView.Items.Clear()
+    $itemTag = 0
+
+    function Add-Visible($obj) {
+        $id             = $obj.Id
+        $identity       = $obj.Identity
+        $displayName    = $obj.DisplayName
+        $type           = $obj.Type
+        $indent         = $obj.Indent
+        $expanded       = $obj.Expanded
+        $members        = $obj.Members
+        $rights         = $obj.Rights
+        $accessType     = $obj.AccessType
+
+        $prefix = "    " * $indent
+        $item = New-Object System.Windows.Forms.ListViewItem($prefix + $displayName)
+        [void]$item.SubItems.Add($rights)
+        [void]$item.SubItems.Add($accessType)
+
+        if ($type -eq "User") {
+            $item.ForeColor = [System.Drawing.Color]::Black
+        } elseif ($type -eq "Group") {
+            $item.ForeColor = [System.Drawing.Color]::Blue
+        }
+
+        $listView.Items.Add($item)
+
+        if ($expanded) {
+            $members | ForEach-Object {
+                Add-Visible $_
+            }
+        }
+    }
+
+    $global:PermissionModel | ForEach-Object {
+        Add-Visible $_
+    }
 }
 
 # =======================
