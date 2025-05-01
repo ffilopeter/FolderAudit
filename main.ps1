@@ -1,6 +1,11 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+try {
+    Import-Module ActiveDirectory -ErrorAction Stop
+    $adAvailable = $true
+} catch { $adAvailable = $false }
+
 # =======================
 # GUI
 # =======================
@@ -102,6 +107,37 @@ function Load-TreeView {
             $parentNode.Nodes.Add($fileNode)
         }
     } catch {}
+}
+
+# Check if identity is a group or user
+function Is-Group {
+    param([string]$identity)
+
+    if ($identity -Match '\\') {
+        $domain, $name = $identity.Split('\', 2)
+
+        if ($domain -Match '^(BUILTIN|NT AUTHORITY)$' -Or $domain -eq $env:COMPUTERNAME) {
+
+            # Identity is local
+            try {
+                $group = [ADSI]"WinNT://./$name,group"
+                if ($group.Path) { return $true }
+            } catch {}
+        } else {
+
+            # Identity is domain
+            if ($adAvailable) {
+                try {
+                    $adObject = Get-ADObject -Filter { SamAccountName -eq $name } -ErrorAction Stop
+                    if ($adObject.ObjectClass -eq 'group') {
+                        return $true;
+                    }
+                } catch {}
+            }
+        }
+    }
+
+    return $false
 }
 
 # =======================
