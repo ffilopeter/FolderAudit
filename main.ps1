@@ -85,6 +85,20 @@ $treeView.Add_AfterSelect({
     }
 })
 
+$listView.Add_DoubleClick({
+    if ($listView.SelectedItems.Count -eq 1) {
+        $selected = $listView.SelectedItems[0]
+        $tag = $selected.Tag
+
+        if ($tag.Type -eq "User") {
+    
+        } elseif ($tag.Type -eq "Group") {
+            Toggle-ExpandProperty $tag.Id $global:PermissionModel
+            Rebuild-ListView $listView
+        }
+    }
+})
+
 # =======================
 # Functions
 # =======================
@@ -186,7 +200,7 @@ function Get-GroupMembers {
         # Get local group members
         try {
             $output = net localgroup "$name" 2>&1
-            $start = ($output | Select-String -SimpleMatch '---').LineNumber + 1
+            $start = ($output | Select-String -SimpleMatch '---').LineNumber
             $end = ($output | Select-String -SimpleMatch 'The command completed successfully.').LineNumber
             $result = $output[$start..($end - 2)] | Where-Object { $_.Trim() -ne '' }
 
@@ -215,9 +229,9 @@ function Resolve-Group {
         $name = $id.Split('\')[-1]
 
         $result += [PSCustomObject]@{
-            Id              = $result.Count
+            Id              = [guid]::NewGuid().ToString()
             Identity        = $id
-            DisplayName     = $(if ($isGroup) { "+ $name" } else { $id })
+            DisplayName     = $(if ($isGroup) { $name } else { $id })
             Type            = $(if ($isGroup) { "Group" } else { "User" })
             Indent          = $indentation
             Expanded        = $false
@@ -251,9 +265,9 @@ function Load-Permissions {
 
             # add to PermissionModel array
             $global:PermissionModel += [PSCustomObject]@{
-                Id              = $global:PermissionModel.Count
+                Id              = [guid]::NewGuid().ToString()
                 Identity        = $identity
-                DisplayName     = $(if ($isGroup) { "+ $name" } else { $identity })
+                DisplayName     = $(if ($isGroup) { $name } else { $identity })
                 Type            = $(if ($isGroup) { "Group" } else { "User" })
                 Indent          = 0
                 Expanded        = $false
@@ -296,11 +310,18 @@ function Rebuild-ListView {
         $members        = $obj.Members
         $rights         = $obj.Rights
         $accessType     = $obj.AccessType
+        $groupPrefix    = "";
+
+        if ($type -eq "Group") {
+            if ($expanded) { $groupPrefix = "- " }
+            else { $groupPrefix = "+ " }
+        }
 
         $prefix = "    " * $indent
-        $item = New-Object System.Windows.Forms.ListViewItem($prefix + $displayName)
+        $item = New-Object System.Windows.Forms.ListViewItem($prefix + $groupPrefix + $displayName)
         [void]$item.SubItems.Add($rights)
         [void]$item.SubItems.Add($accessType)
+        $item.Tag = @{ Id = $id; Type = $type }
 
         if ($type -eq "User") {
             $item.ForeColor = [System.Drawing.Color]::Black
@@ -320,6 +341,29 @@ function Rebuild-ListView {
     $global:PermissionModel | ForEach-Object {
         Add-Visible $_
     }
+}
+
+function Toggle-ExpandProperty {
+    param($guid, $permissionModel)
+
+    foreach ($identity in $permissionModel) {
+        if ($identity.Id -eq $guid) {
+            if ($identity.Expanded -eq $true) {
+                $identity.Expanded = $false
+            } else {
+                $identity.Expanded = $true
+            }
+
+            return $true
+        }
+
+        if ($identity.Members) {
+            $toggle = Toggle-ExpandProperty $guid $identity.Members
+            if ($toggle) { return $true }
+        }
+    }
+
+    return $false
 }
 
 # =======================
