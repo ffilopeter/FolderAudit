@@ -37,6 +37,7 @@ $listView.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 [void]$listView.Columns.Add("Identity", 200)
 [void]$listView.Columns.Add("Rights", 200)
 [void]$listView.Columns.Add("Access", 100)
+[void]$listView.Columns.Add("Inherited", 100)
 
 # Browse Button
 $browseButton = New-Object System.Windows.Forms.Button
@@ -254,6 +255,7 @@ function Resolve-Group {
 
             Rights          = ""
             AccessType      = ""
+            Inherited       = ""
         }
     }
 
@@ -271,6 +273,8 @@ function Load-Permissions {
             
             # name with domain portion prepended
             $identity = $access.IdentityReference.ToString()
+
+            $inherited = $access.IsInherited
             
             $isGroup = (Is-Group $identity).Group
 
@@ -291,6 +295,7 @@ function Load-Permissions {
 
                 Rights          = $access.FileSystemRights.ToString()
                 AccessType      = $access.AccessControlType.ToString()
+                Inherited       = $(if ($inherited) { "Inherited" } else { "Not inherited" })
             }
         }
     } catch {
@@ -324,6 +329,7 @@ function Rebuild-ListView {
         $members        = $obj.Members
         $rights         = $obj.Rights
         $accessType     = $obj.AccessType
+        $inherited      = $obj.Inherited
         $groupPrefix    = "";
 
         if ($type -eq "Group") {
@@ -335,6 +341,7 @@ function Rebuild-ListView {
         $item = New-Object System.Windows.Forms.ListViewItem($prefix + $groupPrefix + $displayName)
         [void]$item.SubItems.Add($rights)
         [void]$item.SubItems.Add($accessType)
+        [void]$item.SubItems.Add($inherited)
         $item.Tag = @{ Id = $id; Type = $type }
 
         if ($type -eq "User") {
