@@ -117,6 +117,28 @@ $listView.Add_DoubleClick({
 # Functions
 # =======================
 
+# Simplify rights
+function Format-Rights {
+    param ([System.Security.AccessControl.FileSystemRights]$rights)
+    $rights = $rights -band (-bnot [System.Security.AccessControl.FileSystemRights]::Synchronize)
+    $friendly = @()
+    if ($rights -band [System.Security.AccessControl.FileSystemRights]::FullControl) {
+        $friendly += "Full Control"
+    } else {
+        if ($rights -band [System.Security.AccessControl.FileSystemRights]::Modify) { $friendly += "Modify" }
+        if ($rights -band [System.Security.AccessControl.FileSystemRights]::ReadAndExecute) {
+            $friendly += "Read & Execute"
+        } elseif ($rights -band [System.Security.AccessControl.FileSystemRights]::Read) {
+            $friendly += "Read"
+        }
+        if ($rights -band [System.Security.AccessControl.FileSystemRights]::Write) {
+            $friendly += "Write"
+        }
+        if ($friendly.Count -eq 0) { $friendly += $rights.ToString() }
+    }
+    return ($friendly -join ", ")
+}
+
 # Load TreeView recursively
 function Load-TreeView {
     param([System.Windows.Forms.TreeNode]$parentNode, [string]$path)
@@ -293,7 +315,7 @@ function Load-Permissions {
                 # If identity is group, resolve it's members
                 Members         = $(if ($isGroup) { Resolve-Group $identity 0 } else { @() })
 
-                Rights          = $access.FileSystemRights.ToString()
+                Rights          = Format-Rights $access.FileSystemRights
                 AccessType      = $access.AccessControlType.ToString()
                 Inherited       = $(if ($inherited) { "Inherited" } else { "Not inherited" })
             }
