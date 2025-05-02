@@ -45,6 +45,13 @@ $browseButton.Size = New-Object System.Drawing.Size(120, 30)
 $browseButton.Location = New-Object System.Drawing.Point(10, 10)
 $browseButton.Anchor = 'Top, Left'
 
+# Loading label
+$loadingLabel = New-Object System.Windows.Forms.Label
+$loadingLabel.Text = "Loading..."
+$loadingLabel.Size = New-Object System.Drawing.Size(100, 20)
+$loadingLabel.Location = New-Object System.Drawing.Point(140, 20)
+$loadingLabel.Visible = $false
+
 $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
 
 # =======================
@@ -67,6 +74,9 @@ $browseButton.Add_Click({
 
         $treeView.Nodes.Add($rootNode)
 
+        $loadingLabel.Visible = $true
+        $form.Refresh()
+
         # Load the whole tree
         Load-TreeView -parentNode $rootNode -path $folderBrowser.SelectedPath
         
@@ -74,6 +84,9 @@ $browseButton.Add_Click({
 
         Load-Permissions -path $folderBrowser.SelectedPath
         Rebuild-ListView $listView
+
+        $loadingLabel.Visible = $false
+        $form.Refresh()
     }
 })
 
@@ -190,6 +203,7 @@ function Get-GroupMembers {
             try {
                 Get-ADGroupMember -Identity $name -ErrorAction Stop | ForEach-Object {
                     $sam = $_.SamAccountName
+                    $name = $_.Name
                     $members += "$domain\$sam"
                 }
             } catch {}
@@ -373,4 +387,5 @@ function Toggle-ExpandProperty {
 $form.Controls.Add($treeView)
 $form.Controls.Add($listView)
 $form.Controls.Add($browseButton)
+$form.Controls.Add($loadingLabel)
 [void]$form.ShowDialog()
