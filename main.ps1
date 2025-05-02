@@ -75,8 +75,8 @@ $browseButton.Add_Click({
 
         $treeView.Nodes.Add($rootNode)
 
-        $loadingLabel.Visible = $true
-        $form.Refresh()
+        # $loadingLabel.Visible = $true
+        # $form.Refresh()
 
         # Load the whole tree
         Load-TreeView -parentNode $rootNode -path $folderBrowser.SelectedPath
@@ -86,19 +86,23 @@ $browseButton.Add_Click({
         Load-Permissions -path $folderBrowser.SelectedPath
         Rebuild-ListView $listView
 
-        $loadingLabel.Visible = $false
-        $form.Refresh()
+        # $loadingLabel.Visible = $false
+        # $form.Refresh()
     }
 })
 
 $treeView.Add_AfterSelect({
     $selectedPath = $treeView.SelectedNode.Tag
     if (Test-Path $selectedPath) {
+        Write-Host "Path exists"
         Load-Permissions -path $selectedPath
         Rebuild-ListView $listView
+    } else {
+        Write-Host "Path doesnt exist"
     }
 })
 
+# Expand / Collapse group
 $listView.Add_DoubleClick({
     if ($listView.SelectedItems.Count -eq 1) {
         $selected = $listView.SelectedItems[0]
@@ -288,6 +292,7 @@ function Load-Permissions {
     param([string]$path)
 
     $global:PermissionModel = @()
+    $listView.Items.Clear()
 
     try {
         $acl = Get-Acl -Path $path
@@ -339,43 +344,30 @@ function Rebuild-ListView {
     param($listView)
 
     $listView.Items.Clear()
-    $itemTag = 0
 
     function Add-Visible($obj) {
-        $id             = $obj.Id
-        $identity       = $obj.Identity
-        $displayName    = $obj.DisplayName
-        $type           = $obj.Type
-        $indent         = $obj.Indent
-        $expanded       = $obj.Expanded
-        $members        = $obj.Members
-        $rights         = $obj.Rights
-        $accessType     = $obj.AccessType
-        $inherited      = $obj.Inherited
-        $groupPrefix    = "";
+        $groupPrefix    = ""
+        $indentSize     = 4
 
-        if ($type -eq "Group") {
-            if ($expanded) { $groupPrefix = "- " }
-            else { $groupPrefix = "+ " }
+        if ($obj.Type -eq "Group") {
+            $groupPrefix = $(if ($obj.Expanded) { "- " } else { "+ " })
         }
 
-        $prefix = "    " * $indent
-        $item = New-Object System.Windows.Forms.ListViewItem($prefix + $groupPrefix + $displayName)
-        [void]$item.SubItems.Add($rights)
-        [void]$item.SubItems.Add($accessType)
-        [void]$item.SubItems.Add($inherited)
-        $item.Tag = @{ Id = $id; Type = $type }
+        $prefix = " " * $indentSize * $obj.Indent
+        $item = New-Object System.Windows.Forms.ListViewItem($prefix + $groupPrefix + $obj.DisplayName)
 
-        if ($type -eq "User") {
-            $item.ForeColor = [System.Drawing.Color]::Black
-        } elseif ($type -eq "Group") {
-            $item.ForeColor = [System.Drawing.Color]::Blue
-        }
+        [void]$item.SubItems.Add($obj.Rights)
+        [void]$item.SubItems.Add($obj.AccessType)
+        [void]$item.SubItems.Add($obj.Inherited)
+
+        $item.Tag = @{ Id = $obj.Id; Type = $obj.Type }
+        $item.ForeColor = $(if ($obj.Type -eq "Group") { [System.Drawing.Color]::Blue } else { [System.Drawing.Color]::Black })
 
         $listView.Items.Add($item)
 
-        if ($expanded) {
-            $members | ForEach-Object {
+        # Expand group
+        if ($obj.Type -eq "Group" -and $obj.Expanded) {
+            $obj.Members | ForEach-Object {
                 Add-Visible $_
             }
         }
@@ -386,17 +378,14 @@ function Rebuild-ListView {
     }
 }
 
+# Find identity by GUID and toggle Expand property
+# search recursively
 function Toggle-ExpandProperty {
     param($guid, $permissionModel)
 
     foreach ($identity in $permissionModel) {
         if ($identity.Id -eq $guid) {
-            if ($identity.Expanded -eq $true) {
-                $identity.Expanded = $false
-            } else {
-                $identity.Expanded = $true
-            }
-
+            $identity.Expanded = -not $identity.Expanded
             return $true
         }
 
