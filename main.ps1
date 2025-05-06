@@ -20,8 +20,8 @@ $form.StartPosition = "CenterScreen"
 
 # TreeView
 $treeView = New-Object System.Windows.Forms.TreeView
-$treeView.Size = New-Object System.Drawing.Size(400, 400)
-$treeView.Location = New-Object System.Drawing.Point(10, 50)
+$treeView.Size = New-Object System.Drawing.Size(400, 410)
+$treeView.Location = New-Object System.Drawing.Point(10, 40)
 $treeView.Anchor = 'Top, Bottom, Left'
 
 # ListView
@@ -29,8 +29,8 @@ $listView = New-Object System.Windows.Forms.ListView
 $listView.View = 'Details'
 $listView.FullRowSelect = $true
 $listView.GridLines = $true
-$listView.Size = New-Object System.Drawing.Size(510, 400)
-$listView.Location = New-Object System.Drawing.Point(420, 50)
+$listView.Size = New-Object System.Drawing.Size(500, 410)
+$listView.Location = New-Object System.Drawing.Point(420, 40)
 $listView.Anchor = 'Top, Bottom, Left, Right'
 $listView.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 
@@ -42,16 +42,25 @@ $listView.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 # Browse Button
 $browseButton = New-Object System.Windows.Forms.Button
 $browseButton.Text = "Browse Folder"
-$browseButton.Size = New-Object System.Drawing.Size(120, 30)
+$browseButton.Size = New-Object System.Drawing.Size(120, 20)
 $browseButton.Location = New-Object System.Drawing.Point(10, 10)
 $browseButton.Anchor = 'Top, Left'
 
-# Loading label
-$loadingLabel = New-Object System.Windows.Forms.Label
-$loadingLabel.Text = "Loading..."
-$loadingLabel.Size = New-Object System.Drawing.Size(100, 20)
-$loadingLabel.Location = New-Object System.Drawing.Point(140, 20)
-$loadingLabel.Visible = $false
+# Directory Input
+$directoryTextBox = New-Object System.Windows.Forms.TextBox
+$directoryTextBox.Size = New-Object System.Drawing.Size(780, 30)
+$directoryTextBox.Location = New-Object System.Drawing.Point(140, 10)
+$directoryTextBox.ReadOnly = $true
+$directoryTextBox.Anchor = 'Top, Bottom, Left, Right'
+
+$directoryTextBox.Add_KeyDown({
+    param ($sender, $e)
+
+    # Check if the Ctrl + A keys are pressed
+    if ($e.Control -and $e.KeyCode -eq [System.Windows.Forms.Keys]::A) {
+        $sender.SelectAll()
+    }
+})
 
 $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
 
@@ -63,6 +72,8 @@ $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
 # load folder structure to tree view
 $browseButton.Add_Click({
     if ($folderBrowser.ShowDialog() -eq "OK") {
+
+        $directoryTextBox.Text = $folderBrowser.SelectedPath
 
         # Clear treeView and listView
         $treeView.Nodes.Clear()
@@ -95,6 +106,7 @@ $treeView.Add_AfterSelect({
     $selectedPath = $treeView.SelectedNode.Tag
     if (Test-Path $selectedPath) {
         Write-Host "Path exists"
+        $directoryTextBox.Text = $selectedPath
         Load-Permissions -path $selectedPath
         Rebuild-ListView $listView
     } else {
@@ -406,4 +418,5 @@ $form.Controls.Add($treeView)
 $form.Controls.Add($listView)
 $form.Controls.Add($browseButton)
 $form.Controls.Add($loadingLabel)
+$form.Controls.Add($directoryTextBox)
 [void]$form.ShowDialog()
