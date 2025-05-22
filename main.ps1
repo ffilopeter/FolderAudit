@@ -24,6 +24,10 @@ $treeView.Size = New-Object System.Drawing.Size(400, 410)
 $treeView.Location = New-Object System.Drawing.Point(10, 40)
 $treeView.Anchor = 'Top, Bottom, Left'
 
+# 
+$contextMenuStrip = New-Object System.Windows.Forms.ContextMenuStrip
+$contextMenuStrip.Items.Add("Copy")
+
 # ListView
 $listView = New-Object System.Windows.Forms.ListView
 $listView.View = 'Details'
@@ -33,6 +37,7 @@ $listView.Size = New-Object System.Drawing.Size(500, 410)
 $listView.Location = New-Object System.Drawing.Point(420, 40)
 $listView.Anchor = 'Top, Bottom, Left, Right'
 $listView.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$listView.ContextMenuStrip = $contextMenuStrip
 
 [void]$listView.Columns.Add("Identity", 200)
 [void]$listView.Columns.Add("Rights", 200)
